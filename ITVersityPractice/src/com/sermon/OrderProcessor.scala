@@ -10,7 +10,7 @@ object OrderProcessor {
     val sc = new SparkContext(conf)
     
     //val orders = sc.textFile("/Users/conejitos/marcos/data/orders.txt")
-    val orders = sc.textFile("/Users/serranm1/temp/miGIT/pythonPractice/datos/orders.txt")
+    val orders = sc.textFile("/Users/serranm1/temp/miGIT/CCA-175/dataPractice/orders.txt")
     
     //val orderRDD = orders.map(x => parseNames(x))
     val orderRDD = orders.map{parseNames}
