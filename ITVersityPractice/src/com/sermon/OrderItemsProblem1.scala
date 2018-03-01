@@ -4,8 +4,29 @@ import org.apache.spark.SparkConf
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.functions._
+import scala.collection.Set
+import org.apache.spark.sql.Row
+import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.StructField
+import org.apache.spark.sql.types.DoubleType
+import org.apache.spark.sql.types.IntegerType
+import org.apache.spark.sql.types.StringType
+import org.apache.spark.sql.types.FloatType
 
 object OrderItemsProblem1 {
+  
+  def dfSchema(): StructType = { 
+    StructType( 
+        Seq( 
+            StructField(name = "order_date", dataType = StringType, nullable = false),
+            StructField(name = "order_status", dataType = StringType, nullable = false), 
+            StructField(name = "order_total", dataType = FloatType, nullable = false), 
+            StructField(name = "order_id_total", dataType = IntegerType, nullable = false) 
+           ) 
+     ) 
+  }
+
+  
   def main(args: Array[String]) {
     val conf = new SparkConf().setAppName("Simple Application").setMaster("local")
     val sc = new SparkContext(conf)
@@ -22,6 +43,7 @@ object OrderItemsProblem1 {
                               .orderBy(desc("order_date"), col("order_status"), desc("total_amount"), col("total_orders"))
 
     orderGroup.show()
+    println("-------------------------------------------------------------------------------")
     
     orderJoin.registerTempTable("order_joined");
 
@@ -30,7 +52,20 @@ object OrderItemsProblem1 {
 									                "from order_joined group by to_date(from_unixtime(cast(order_date/1000 as bigint))), order_status " +
 									                "order by order_formatted_date desc,order_status,total_amount desc, total_orders");
     sqlResult.show()
+    println("-------------------------------------------------------------------------------")
     
+    // map ( (order_date, order_status) , (price, order_id) )
+    val orderRows = orderJoin.rdd.map(x => ((x(1).toString(), x(3).toString()), (x(8).toString().toFloat, x(0).toString())))
+                                  .combineByKey(
+                                       (x : (Float, String)) => (x._1, Set(x._2)),
+                                       (x : (Float, Set[String]), y : (Float, String)) => (x._1 + y._1, x._2 + y._2), 
+                                       (x : (Float, Set[String]), y : (Float, Set[String])) => (x._1 + y._1, x._2 ++ y._2)
+                                      )
+                                  .map(x => Row(x._1._1, x._1._2, x._2._1, x._2._2.size))
+   val mySchema = dfSchema()                                  
+   sqlContext.createDataFrame(orderRows, mySchema)
+             .orderBy(desc("order_date"), col("order_status"), desc("order_total"), col("order_id_total"))
+             .show()
     /*
     val comByKeyResult = orderJoin.map(x => ( (x(1).toString, x(3).toString), (x(8).toString.toFloat, x(0).toString) ))
                                   .combineByKey(
