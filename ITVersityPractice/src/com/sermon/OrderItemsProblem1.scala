@@ -38,11 +38,11 @@ object OrderItemsProblem1 {
     
     val orderJoin = orders.join(orderItems, orders("order_id") === orderItems("order_item_order_id"))
     
-    val orderGroup = orderJoin.groupBy(to_date(from_unixtime(col("order_date") / 1000)).alias("order_date"), col("order_status"))
+    val dataFrameResult = orderJoin.groupBy(to_date(from_unixtime(col("order_date") / 1000)).alias("order_date"), col("order_status"))
                               .agg(sum("order_item_subtotal").alias("total_amount"), countDistinct("order_id").alias("total_orders"))
                               .orderBy(desc("order_date"), col("order_status"), desc("total_amount"), col("total_orders"))
 
-    orderGroup.show()
+    dataFrameResult.show()
     println("-------------------------------------------------------------------------------")
     
     orderJoin.registerTempTable("order_joined");
@@ -63,9 +63,38 @@ object OrderItemsProblem1 {
                                       )
                                   .map(x => Row(x._1._1, x._1._2, x._2._1, x._2._2.size))
    val mySchema = dfSchema()                                  
-   sqlContext.createDataFrame(orderRows, mySchema)
-             .orderBy(desc("order_date"), col("order_status"), desc("order_total"), col("order_id_total"))
-             .show()
+   val combByKeyResult = sqlContext.createDataFrame(orderRows, mySchema)
+                                  .orderBy(desc("order_date"), col("order_status"), desc("order_total"), col("order_id_total"))
+
+   combByKeyResult.show()
+   
+   
+   println("-----------------------------------------------------------------------------------------------------------------")
+   println("Save result as CVS")
+
+   dataFrameResult.rdd.coalesce(1, true).map(x => x(0).toString() + "," + x(1).toString() + "," + x(2).toString() + "," + x(3).toString()).saveAsTextFile("dataFrameResult.cvs")
+   sqlResult.rdd.coalesce(1, true).map(x => x(0).toString() + "," + x(1).toString() + "," + x(2).toString() + "," + x(3).toString()).saveAsTextFile("sqlResult.cvs")
+   combByKeyResult.rdd.coalesce(1, true).map(x => x(0).toString() + "," + x(1).toString() + "," + x(2).toString() + "," + x(3).toString()).saveAsTextFile("comByKeyResult.cvs")
+
+   println("-----------------------------------------------------------------------------------------------------------------")
+   println("Compress result as GZIP")
+
+   sqlContext.setConf("spark.sql.parquet.compression.codec", "gzip")
+   dataFrameResult.coalesce(1).write.mode("overwrite").parquet("dataFrameResult.gzip")
+   sqlResult.coalesce(1).write.mode("overwrite").parquet("sqlResult.gzip")
+   combByKeyResult.coalesce(1).write.mode("overwrite").parquet("combByKeyResult.gzip")
+
+   println("-----------------------------------------------------------------------------------------------------------------")
+   println("Compress result as SNAPPY")
+   
+   sqlContext.setConf("spark.sql.parquet.compression.codec", "snappy")
+   dataFrameResult.coalesce(1).write.mode("overwrite").parquet("dataFrameResult-snappy")
+   sqlResult.coalesce(1).write.mode("overwrite").parquet("sqlResult-snappy")
+   combByKeyResult.coalesce(1).write.mode("overwrite").parquet("combByKeyResult-snappy")
+
+   println("-----------------------------------------------------------------------------------------------------------------")
+
+   
     /*
     val comByKeyResult = orderJoin.map(x => ( (x(1).toString, x(3).toString), (x(8).toString.toFloat, x(0).toString) ))
                                   .combineByKey(
